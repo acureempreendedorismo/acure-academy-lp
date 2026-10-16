@@ -383,7 +383,7 @@ a { color: inherit; }
 
 <div class="barra" id="barra" hidden>
   <div class="wrap">
-    <span><b id="barra-msg">Você pode perder a promoção</b> · <span data-preco>R$ 497</span> até <span id="barra-data"></span></span>
+    <span><b id="barra-msg"></b> <span id="barra-txt"></span></span>
     <span class="barra__t" id="barra-t" role="timer" aria-live="off">00d 00h 00m 00s</span>
   </div>
 </div>
@@ -609,7 +609,7 @@ a { color: inherit; }
         <div class="bonus" id="bonus" hidden></div>
         <div class="gar-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg><span><b>7 dias de garantia.</b> Se não fizer sentido, devolvemos 100% do valor.</span></div>
         <div class="prazo" id="contagem" hidden>
-          <p class="prazo__t">Você pode perder a promoção</p>
+          <p class="prazo__t" id="prazo-t"></p>
           <p class="prazo__s" id="prazo-s"></p>
           <div class="relogio" role="timer" aria-live="off">
             <div><b id="cd-d">00</b><span>dias</span></div>
@@ -744,6 +744,9 @@ var PROFESSORES = [];
 var CURRICULO = { gestao: [], rh: [], operacional: [] };
 // Bônus real do lote 1 (ex.: "Encontro ao vivo de perguntas"). Vazio = sem bônus.
 var BONUS_LOTE1 = "";
+// Bônus real da semana: quem compra até domingo, 23h59 (Brasília), ganha. Toda segunda o contador recomeça para o domingo seguinte.
+// Ex.: "Encontro ao vivo de perguntas com o Daniel". Vazio = sem contador e sem barra no topo.
+var BONUS_SEMANA = "";
 // Valor da parcela, ex.: "ou 12x de R$ 61,87". Vazio = "ou em até 12x no cartão".
 var PARCELA = "";
 // Link do WhatsApp, ex.: "https://wa.me/5521999999999". Vazio = sem botão de dúvidas.
@@ -765,8 +768,17 @@ var WHATSAPP = "https://wa.me/5521992223333";
   var fim = LOTE1_FIM ? new Date(LOTE1_FIM).getTime() : NaN;
   var temData = !isNaN(fim);
   function estado() { return !temData ? "semdata" : (Date.now() < fim ? "lote1" : "lote2"); }
-  function fmtFim() {
-    var d = new Date(fim), tz = "America/Sao_Paulo";
+  // próximo domingo, 23h59 de Brasília (sem horário de verão desde 2019, então -03:00 fixo)
+  function fimDaSemana() {
+    var BRT = 3 * 3600e3, agora = Date.now(), l = new Date(agora - BRT);
+    var t = Date.UTC(l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate() + (7 - l.getUTCDay()) % 7, 23, 59, 0) + BRT;
+    return t <= agora ? t + 7 * 864e5 : t;
+  }
+  // o que o contador mostra: prazo real do lote 1 ou o bônus da semana
+  function modoContador() { return estado() === "lote1" ? "lote1" : (BONUS_SEMANA ? "bonus" : ""); }
+  function alvoContador() { return modoContador() === "lote1" ? fim : fimDaSemana(); }
+  function fmtFim(ts) {
+    var d = new Date(ts || fim), tz = "America/Sao_Paulo";
     var dia = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: tz });
     var hm = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz }).split(":");
     return { dia: dia, hora: hm[0] + "h" + hm[1] };
@@ -824,12 +836,28 @@ var WHATSAPP = "https://wa.me/5521992223333";
               : e === "semdata" ? "depois do período de lançamento, o pacote passa a custar R$ " + PRECO2 + ". " : "";
     ps.appendChild(document.createTextNode(psTxt + (psTxt ? "Se" : "Se") + " ainda não está pronto para o pacote, comece pela aula “Time que Entrega”, por R$ 97."));
     txt("fixa-sub", l2 ? "Pacote completo" : "Pacote completo · lançamento");
-    $("bonus").hidden = l2 || !BONUS_LOTE1;
-    $("barra").hidden = e !== "lote1";
-    $("contagem").hidden = e !== "lote1";
-    if (e === "lote1") {
-      txt("barra-data", f.dia + ", às " + f.hora);
+    var modo = modoContador(), bn = $("bonus");
+    bn.textContent = "";
+    var bonusTxt = modo === "bonus" ? BONUS_SEMANA : (e === "lote1" ? BONUS_LOTE1 : "");
+    if (bonusTxt) {
+      var bb = document.createElement("b");
+      bb.textContent = modo === "bonus" ? "Bônus desta semana: " : "Só no lote 1: ";
+      bn.appendChild(bb); bn.appendChild(document.createTextNode(bonusTxt));
+    }
+    bn.hidden = !bonusTxt;
+    $("barra").hidden = !modo;
+    $("contagem").hidden = !modo;
+    if (modo === "lote1") {
+      txt("barra-msg", "Você pode perder a promoção");
+      txt("barra-txt", "· R$ " + PRECO1 + " até " + f.dia + ", às " + f.hora);
+      txt("prazo-t", "Você pode perder a promoção");
       txt("prazo-s", "Depois de " + f.dia + ", às " + f.hora + ", o pacote passa a custar R$ " + PRECO2 + ".");
+    } else if (modo === "bonus") {
+      var fb = fmtFim(fimDaSemana());
+      txt("barra-msg", "Bônus da semana:");
+      txt("barra-txt", "comprando até domingo, " + fb.dia + ", às " + fb.hora);
+      txt("prazo-t", "Bônus para quem compra até domingo");
+      txt("prazo-s", BONUS_SEMANA + ". Válido para compras até " + fb.dia + ", às " + fb.hora + ".");
     }
     ligar();
   }
@@ -878,7 +906,6 @@ var WHATSAPP = "https://wa.me/5521992223333";
   });
 
   // bônus, parcela, WhatsApp
-  if (BONUS_LOTE1) { var bn = $("bonus"); var bb = document.createElement("b"); bb.textContent = "Só no lote 1: "; bn.appendChild(bb); bn.appendChild(document.createTextNode(BONUS_LOTE1)); }
   if (PARCELA) txt("parcela", PARCELA);
   if (WHATSAPP) {
     $("faq-wa").hidden = false; $("faq-wa-link").href = WHATSAPP;
@@ -887,21 +914,27 @@ var WHATSAPP = "https://wa.me/5521992223333";
   aplicar();
 
   // contador
-  if (temData && Date.now() < fim) {
+  if (modoContador()) {
     var p2 = function (n) { return String(n).padStart(2, "0"); };
-    var ultimas = false;
+    var alvo = alvoContador(), ultimas = false;
     var iv = setInterval(tick, 1000);
     function tick() {
-      var s = Math.max(0, Math.floor((fim - Date.now()) / 1000));
+      var s = Math.max(0, Math.floor((alvo - Date.now()) / 1000));
       var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+      var bonus = modoContador() === "bonus";
       txt("cd-d", p2(d)); txt("cd-h", p2(h)); txt("cd-m", p2(m)); txt("cd-s", p2(sec));
       txt("barra-t", p2(d) + "d " + p2(h) + "h " + p2(m) + "m " + p2(sec) + "s");
-      txt("fixa-sub", "Termina em " + (d > 0 ? d + "d " : "") + h + "h " + p2(m) + "m");
+      txt("fixa-sub", (bonus ? "Bônus termina em " : "Termina em ") + (d > 0 ? d + "d " : "") + h + "h " + p2(m) + "m");
       if (s <= 48 * 3600 && !ultimas) {
         ultimas = true;
-        txt("barra-msg", "Últimas 48 horas: você pode perder a promoção");
+        txt("barra-msg", bonus ? "Últimas 48 horas do bônus da semana:" : "Últimas 48 horas: você pode perder a promoção");
       }
-      if (s === 0) { clearInterval(iv); aplicar(); }
+      if (s === 0) {
+        // fim do prazo: o lote 1 vira lote 2; o bônus recomeça para o próximo domingo
+        aplicar(); ultimas = false;
+        if (!modoContador()) { clearInterval(iv); return; }
+        alvo = alvoContador();
+      }
     }
     tick();
   }
